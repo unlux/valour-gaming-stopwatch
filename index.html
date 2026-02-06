@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Valor Gaming — Stopwatch</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            mono: ['"SF Mono"', '"Cascadia Code"', '"Fira Code"', 'Consolas', 'monospace'],
+            sans: ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    /* Prevent pull-to-refresh and overscroll on mobile */
+    html, body {
+      overscroll-behavior: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+  </style>
+</head>
+<body class="bg-neutral-950 text-neutral-100 min-h-dvh font-sans">
+
+  <div id="grid" class="grid grid-cols-2 grid-rows-2 h-dvh w-full gap-px bg-neutral-800">
+    <!-- Timer cards are rendered by app.js -->
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
