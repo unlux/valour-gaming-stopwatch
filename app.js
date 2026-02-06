@@ -9,6 +9,7 @@
 const STORAGE_KEY = "ps-timers-v1";
 const TIMER_COUNT = 4;
 const RENDER_INTERVAL_MS = 500;
+const RESET_CONFIRM_MS = 2000; // Time window for second tap to confirm reset
 
 // ---------------------------------------------------------------------------
 // State helpers
@@ -58,7 +59,6 @@ function currentElapsed(timer) {
 // ---------------------------------------------------------------------------
 
 function formatTime(ms) {
-  // Clamp to zero in case of clock drift edge cases.
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
@@ -120,9 +120,31 @@ function resumeTimer(index) {
   renderAll();
 }
 
+// Track which timers are awaiting reset confirmation and their timeout IDs.
+const resetPending = new Array(TIMER_COUNT).fill(false);
+const resetTimeouts = new Array(TIMER_COUNT).fill(null);
+
+function handleReset(index) {
+  if (resetPending[index]) {
+    // Second tap — confirm the reset.
+    clearTimeout(resetTimeouts[index]);
+    resetPending[index] = false;
+    resetTimeouts[index] = null;
+    resetTimer(index);
+  } else {
+    // First tap — enter confirmation state.
+    resetPending[index] = true;
+    renderAll();
+    resetTimeouts[index] = setTimeout(() => {
+      // Revert if no second tap within the window.
+      resetPending[index] = false;
+      renderAll();
+    }, RESET_CONFIRM_MS);
+  }
+}
+
 function resetTimer(index) {
   const t = timers[index];
-  // Reset is allowed from paused or running (safety net).
   t.isRunning = false;
   t.startTime = null;
   t.elapsed = 0;
@@ -145,30 +167,32 @@ function buildUI() {
   for (let i = 0; i < TIMER_COUNT; i++) {
     const card = document.createElement("div");
     card.className =
-      "flex flex-col items-center justify-center bg-neutral-900 px-3 py-4 relative";
+      "flex flex-col items-center justify-center bg-neutral-900 px-3 py-3";
 
     // Label
     const label = document.createElement("span");
-    label.className = "text-xs font-medium tracking-widest uppercase text-neutral-500 mb-2";
+    label.className =
+      "text-xs font-semibold tracking-widest uppercase text-neutral-500 mb-1";
     label.textContent = `PS ${i + 1}`;
     card.appendChild(label);
 
-    // Time display
+    // Time display — big and central
     const timeEl = document.createElement("div");
-    timeEl.className = "font-mono text-3xl sm:text-5xl font-bold tabular-nums leading-none mb-4";
+    timeEl.className =
+      "font-mono text-3xl font-bold tabular-nums leading-none text-neutral-400 mb-3";
     timeEl.textContent = "00:00:00";
     card.appendChild(timeEl);
 
-    // Button row
-    const btnRow = document.createElement("div");
-    btnRow.className = "grid grid-cols-2 gap-2 w-full max-w-[12rem]";
+    // Buttons stacked vertically
+    const btnCol = document.createElement("div");
+    btnCol.className = "flex flex-col gap-1.5 w-full max-w-[10rem]";
 
     const makeBtn = (text, colorClasses, handler) => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.textContent = text;
       btn.className =
-        "py-2 px-3 rounded-md text-sm font-medium border transition-none " +
+        "py-2 rounded-md text-xs font-medium border transition-none " +
         "disabled:opacity-30 disabled:cursor-not-allowed " +
         colorClasses;
       btn.addEventListener("click", handler);
@@ -180,42 +204,31 @@ function buildUI() {
       return btn;
     };
 
-    // Colour palette (shadcn-esque muted tones):
-    //   Start  → green border/text
-    //   Pause  → amber border/text
-    //   Resume → green border/text
-    //   Reset  → red border/text
-
-    const startBtn = makeBtn(
+    // Single toggle: Start → Pause → Resume → Pause …
+    const toggleBtn = makeBtn(
       "Start",
       "border-emerald-800 text-emerald-400 bg-emerald-950/40",
-      () => startTimer(i)
-    );
-    const pauseBtn = makeBtn(
-      "Pause",
-      "border-amber-800 text-amber-400 bg-amber-950/40",
-      () => pauseTimer(i)
-    );
-    const resumeBtn = makeBtn(
-      "Resume",
-      "border-emerald-800 text-emerald-400 bg-emerald-950/40",
-      () => resumeTimer(i)
+      () => {
+        const state = timerState(timers[i]);
+        if (state === "idle") startTimer(i);
+        else if (state === "running") pauseTimer(i);
+        else if (state === "paused") resumeTimer(i);
+      }
     );
     const resetBtn = makeBtn(
       "Reset",
       "border-red-800 text-red-400 bg-red-950/40",
-      () => resetTimer(i)
+      () => handleReset(i)
     );
 
-    btnRow.appendChild(startBtn);
-    btnRow.appendChild(pauseBtn);
-    btnRow.appendChild(resumeBtn);
-    btnRow.appendChild(resetBtn);
-    card.appendChild(btnRow);
+    btnCol.appendChild(toggleBtn);
+    resetBtn.classList.add("mt-3");
+    btnCol.appendChild(resetBtn);
+    card.appendChild(btnCol);
 
     grid.appendChild(card);
 
-    displayRefs.push({ timeEl, startBtn, pauseBtn, resumeBtn, resetBtn, card });
+    displayRefs.push({ timeEl, toggleBtn, resetBtn, card });
   }
 }
 
@@ -239,18 +252,45 @@ function renderAll() {
 
     // Colour the time text based on state.
     ref.timeEl.className =
-      "font-mono text-3xl sm:text-5xl font-bold tabular-nums leading-none mb-4 " +
+      "font-mono text-3xl font-bold tabular-nums leading-none mb-3 " +
       (state === "running"
         ? "text-emerald-400"
         : state === "paused"
           ? "text-amber-400"
           : "text-neutral-400");
 
-    // Enable/disable buttons based on valid transitions.
-    ref.startBtn.disabled = state !== "idle";
-    ref.pauseBtn.disabled = state !== "running";
-    ref.resumeBtn.disabled = state !== "paused";
+    // Toggle button: label and colour swap per state.
+    if (state === "running") {
+      ref.toggleBtn.textContent = "Pause";
+      ref.toggleBtn.className =
+        "py-2 rounded-md text-xs font-medium border transition-none " +
+        "border-amber-800 text-amber-400 bg-amber-950/40";
+    } else if (state === "paused") {
+      ref.toggleBtn.textContent = "Resume";
+      ref.toggleBtn.className =
+        "py-2 rounded-md text-xs font-medium border transition-none " +
+        "border-emerald-800 text-emerald-400 bg-emerald-950/40";
+    } else {
+      ref.toggleBtn.textContent = "Start";
+      ref.toggleBtn.className =
+        "py-2 rounded-md text-xs font-medium border transition-none " +
+        "border-emerald-800 text-emerald-400 bg-emerald-950/40";
+    }
     ref.resetBtn.disabled = state === "idle";
+
+    // Reset button confirmation state — swap label and style on first tap.
+    if (resetPending[i]) {
+      ref.resetBtn.textContent = "Sure?";
+      ref.resetBtn.className =
+        "py-2 rounded-md text-xs font-medium border transition-none " +
+        "border-red-600 text-red-300 bg-red-900/60";
+    } else {
+      ref.resetBtn.textContent = "Reset";
+      ref.resetBtn.className =
+        "py-2 rounded-md text-xs font-medium border transition-none " +
+        "disabled:opacity-30 disabled:cursor-not-allowed " +
+        "border-red-800 text-red-400 bg-red-950/40";
+    }
   }
 }
 
