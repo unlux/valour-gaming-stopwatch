@@ -63,13 +63,10 @@ function formatTime(ms) {
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
   const s = totalSeconds % 60;
-  return (
-    String(h).padStart(2, "0") +
-    ":" +
-    String(m).padStart(2, "0") +
-    ":" +
-    String(s).padStart(2, "0")
-  );
+  return {
+    hh: String(h).padStart(2, "0"),
+    mmss: String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0"),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -176,12 +173,23 @@ function buildUI() {
     label.textContent = `PS ${i + 1}`;
     card.appendChild(label);
 
-    // Time display — big and central
-    const timeEl = document.createElement("div");
-    timeEl.className =
-      "font-mono text-3xl font-bold tabular-nums leading-none text-neutral-400 mb-3";
-    timeEl.textContent = "00:00:00";
-    card.appendChild(timeEl);
+    // Time display — HH big (hidden when 00), MM:SS below
+    const timeWrap = document.createElement("div");
+    timeWrap.className = "flex flex-col items-center mb-3";
+
+    const hhEl = document.createElement("div");
+    hhEl.className =
+      "font-mono text-7xl font-bold tabular-nums leading-none text-neutral-400 hidden";
+    hhEl.textContent = "00";
+    timeWrap.appendChild(hhEl);
+
+    const mmssEl = document.createElement("div");
+    mmssEl.className =
+      "font-mono text-6xl font-bold tabular-nums leading-none text-neutral-400";
+    mmssEl.textContent = "00:00";
+    timeWrap.appendChild(mmssEl);
+
+    card.appendChild(timeWrap);
 
     // Buttons stacked vertically
     const btnCol = document.createElement("div");
@@ -228,7 +236,7 @@ function buildUI() {
 
     grid.appendChild(card);
 
-    displayRefs.push({ timeEl, toggleBtn, resetBtn, card });
+    displayRefs.push({ hhEl, mmssEl, toggleBtn, resetBtn, card });
   }
 }
 
@@ -243,21 +251,27 @@ function renderAll() {
     const state = timerState(t);
     const ms = currentElapsed(t);
 
-    // Update time display only when the formatted string changes to avoid
-    // unnecessary text‐node mutations.
-    const formatted = formatTime(ms);
-    if (ref.timeEl.textContent !== formatted) {
-      ref.timeEl.textContent = formatted;
-    }
+    // Update time display only when the formatted string changes.
+    const { hh, mmss } = formatTime(ms);
+    if (ref.hhEl.textContent !== hh) ref.hhEl.textContent = hh;
+    if (ref.mmssEl.textContent !== mmss) ref.mmssEl.textContent = mmss;
+
+    // Hide HH row when hours is 00.
+    const showHH = hh !== "00";
 
     // Colour the time text based on state.
-    ref.timeEl.className =
-      "font-mono text-3xl font-bold tabular-nums leading-none mb-3 " +
-      (state === "running"
+    const timeColor =
+      state === "running"
         ? "text-emerald-400"
         : state === "paused"
           ? "text-amber-400"
-          : "text-neutral-400");
+          : "text-neutral-400";
+    ref.hhEl.className =
+      "font-mono text-7xl font-bold tabular-nums leading-none " +
+      timeColor + (showHH ? "" : " hidden");
+    ref.mmssEl.className =
+      "font-mono text-6xl font-bold tabular-nums leading-none " +
+      (showHH ? "mt-1 " : "") + timeColor;
 
     // Toggle button: label and colour swap per state.
     if (state === "running") {
